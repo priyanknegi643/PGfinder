@@ -1,0 +1,5 @@
+{
+  "name": "NestGrid - PG Finder",
+  "description": "A smart accommodation recommendation system for university students using weighted scoring and distance algorithms.",
+  "requestFramePermissions": []
+}
