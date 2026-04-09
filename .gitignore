@@ -1,8 +1,12 @@
+```
+# Dependencies
 node_modules/
-build/
-dist/
-coverage/
-.DS_Store
-*.log
-.env*
-!.env.example
+
+# Database
+pgs.db
+
+# Environment
+.env
+.env.local
+.env.*
+```

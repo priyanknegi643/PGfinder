@@ -1,35 +1,69 @@
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
+import Database from "better-sqlite3";
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
-
+  
+  // Initialize SQLite database
+  const db = new Database("pgs.db");
+  
+  // Create tables if they don't exist
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    CREATE TABLE IF NOT EXISTS accommodations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      lat REAL NOT NULL,
+      lon REAL NOT NULL,
+      type TEXT NOT NULL,
+      rent REAL NOT NULL,
+      rating REAL,
+      groceryDist REAL,
+      hospitalDist REAL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  
+  // Seed initial data if accommodations table is empty
+  const count: any = db.prepare("SELECT COUNT(*) as count FROM accommodations").get();
+  if (count.count === 0) {
+    const insert = db.prepare("INSERT INTO accommodations (name, lat, lon, type, rent, rating, groceryDist, hospitalDist) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    insert.run("Green Valley PG", 30.3200, 78.0400, "PG", 8500, 4.5, 0.5, 1.2);
+    insert.run("Skyline Flats", 30.3100, 78.0200, "Flat", 12000, 4.2, 1.5, 0.8);
+    insert.run("Student Haven", 30.3180, 78.0350, "PG", 7000, 3.8, 0.2, 2.5);
+    insert.run("Comfort Stay", 30.3250, 78.0450, "PG", 9000, 4.7, 0.8, 0.5);
+    console.log("Database seeded with initial accommodation data");
+  }
+  
   app.use(express.json());
-
-  // In-memory storage (simulating the Java repositories)
-  const users: any[] = [];
-  const accommodations: any[] = [
-    { id: 1, name: "Green Valley PG", lat: 30.3200, lon: 78.0400, type: "PG", rent: 8500, rating: 4.5, groceryDist: 0.5, hospitalDist: 1.2 },
-    { id: 2, name: "Skyline Flats", lat: 30.3100, lon: 78.0200, type: "Flat", rent: 12000, rating: 4.2, groceryDist: 1.5, hospitalDist: 0.8 },
-    { id: 3, name: "Student Haven", lat: 30.3180, lon: 78.0350, type: "PG", rent: 7000, rating: 3.8, groceryDist: 0.2, hospitalDist: 2.5 },
-    { id: 4, name: "Comfort Stay", lat: 30.3250, lon: 78.0450, type: "PG", rent: 9000, rating: 4.7, groceryDist: 0.8, hospitalDist: 0.5 },
-  ];
 
   // Auth Routes
   app.post("/api/signup", (req, res) => {
     const { username, password } = req.body;
-    if (users.find(u => u.username === username)) {
-      return res.status(400).json({ message: "User already exists" });
+    try {
+      const stmt = db.prepare("INSERT INTO users (username, password) VALUES (?, ?)");
+      stmt.run(username, password);
+      res.json({ message: "Signup successful" });
+    } catch (err: any) {
+      if (err.message.includes("UNIQUE constraint failed")) {
+        return res.status(400).json({ message: "User already exists" });
+      }
+      throw err;
     }
-    users.push({ username, password });
-    res.json({ message: "Signup successful" });
   });
 
   app.post("/api/login", (req, res) => {
     const { username, password } = req.body;
-    const user = users.find(u => u.username === username && u.password === password);
+    const user: any = db.prepare("SELECT * FROM users WHERE username = ? AND password = ?").get(username, password);
     if (!user) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
@@ -38,12 +72,15 @@ async function startServer() {
 
   // Accommodation Routes
   app.get("/api/accommodations", (req, res) => {
+    const accommodations = db.prepare("SELECT * FROM accommodations").all();
     res.json(accommodations);
   });
 
   app.post("/api/accommodations", (req, res) => {
-    const newAcc = { id: Date.now(), ...req.body };
-    accommodations.push(newAcc);
+    const { name, lat, lon, type, rent, rating, groceryDist, hospitalDist } = req.body;
+    const stmt = db.prepare("INSERT INTO accommodations (name, lat, lon, type, rent, rating, groceryDist, hospitalDist) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    const result = stmt.run(name, lat, lon, type, rent, rating, groceryDist, hospitalDist);
+    const newAcc = db.prepare("SELECT * FROM accommodations WHERE id = ?").get(result.lastInsertRowid);
     res.json(newAcc);
   });
 
