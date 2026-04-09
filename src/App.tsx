@@ -14,12 +14,32 @@ import {
   Info,
   TrendingDown,
   ShoppingBag,
-  PlusSquare
+  PlusSquare,
+  X
 } from 'lucide-react';
 import { Accommodation, User, SearchFilters } from './types';
 import { scoreAccommodations } from './services/accommodationService';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
 
 const CAMPUS_COORDS = { lat: 30.3165, lon: 78.0322 };
+
+// Fix for default marker icon in react-leaflet
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+});
+
+// Component to update map center
+function MapUpdater({ center }: { center: [number, number] }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center);
+  }, [center, map]);
+  return null;
+}
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -31,6 +51,8 @@ export default function App() {
   
   const [accommodations, setAccommodations] = useState<Accommodation[]>([]);
   const [searchResults, setSearchResults] = useState<Accommodation[]>([]);
+  const [selectedAccommodation, setSelectedAccommodation] = useState<Accommodation | null>(null);
+  const [showMap, setShowMap] = useState(false);
   const [filters, setFilters] = useState<SearchFilters>({
     radius: 5,
     type: 'PG',
@@ -343,6 +365,14 @@ export default function App() {
                             <span className="text-xs font-mono">{acc.lat.toFixed(2)}, {acc.lon.toFixed(2)}</span>
                           </div>
                         </div>
+                        
+                        <button 
+                          onClick={() => { setSelectedAccommodation(acc); setShowMap(true); }}
+                          className="w-full mt-4 bg-white border border-black px-3 py-2 text-xs font-bold uppercase tracking-widest hover:bg-black hover:text-white transition-all flex items-center justify-center gap-2"
+                        >
+                          <MapPin size={14} />
+                          View on Map
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -446,8 +476,12 @@ export default function App() {
                                 <div className="text-[10px] font-mono uppercase opacity-50 mb-1">Monthly Rent</div>
                                 <div className="text-3xl font-bold tracking-tighter">₹{acc.rent}</div>
                               </div>
-                              <button className="w-full bg-black text-white py-3 text-xs font-bold uppercase tracking-widest hover:bg-white hover:text-black border border-black transition-all mt-4">
-                                View Details
+                              <button 
+                                onClick={() => { setSelectedAccommodation(acc); setShowMap(true); }}
+                                className="w-full bg-black text-white py-3 text-xs font-bold uppercase tracking-widest hover:bg-white hover:text-black border border-black transition-all mt-4 flex items-center justify-center gap-2"
+                              >
+                                <MapPin size={14} />
+                                View on Map
                               </button>
                             </div>
                           </div>
@@ -461,6 +495,85 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      {/* Map Modal */}
+      {showMap && selectedAccommodation && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowMap(false)}>
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-white border border-black p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] w-full max-w-4xl max-h-[90vh] overflow-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h3 className="text-xl font-bold uppercase italic">{selectedAccommodation.name}</h3>
+                <p className="text-xs font-mono opacity-50 mt-1">
+                  {selectedAccommodation.type} • ₹{selectedAccommodation.rent}/month
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowMap(false)}
+                className="p-2 hover:bg-gray-100 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="border border-black mb-4" style={{ height: '400px' }}>
+              <MapContainer
+                center={[selectedAccommodation.lat, selectedAccommodation.lon]}
+                zoom={14}
+                style={{ width: '100%', height: '100%' }}
+              >
+                <TileLayer
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                />
+                <MapUpdater center={[selectedAccommodation.lat, selectedAccommodation.lon]} />
+                <Marker position={[selectedAccommodation.lat, selectedAccommodation.lon]}>
+                  <Popup>
+                    <div className="text-center">
+                      <strong>{selectedAccommodation.name}</strong><br />
+                      {selectedAccommodation.type}<br />
+                      ₹{selectedAccommodation.rent}/month
+                    </div>
+                  </Popup>
+                </Marker>
+                {/* Campus Marker */}
+                <Marker position={[CAMPUS_COORDS.lat, CAMPUS_COORDS.lon]}>
+                  <Popup>
+                    <div className="text-center">
+                      <strong>Campus</strong><br />
+                      Graphic Era University
+                    </div>
+                  </Popup>
+                </Marker>
+              </MapContainer>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+              <div className="border border-black p-3">
+                <div className="text-[9px] font-mono uppercase opacity-50">Distance to Campus</div>
+                <div className="font-bold">{selectedAccommodation.distanceFromCampus?.toFixed(2) || 'N/A'} km</div>
+              </div>
+              <div className="border border-black p-3">
+                <div className="text-[9px] font-mono uppercase opacity-50">Grocery</div>
+                <div className="font-bold">{selectedAccommodation.groceryDist} km</div>
+              </div>
+              <div className="border border-black p-3">
+                <div className="text-[9px] font-mono uppercase opacity-50">Hospital</div>
+                <div className="font-bold">{selectedAccommodation.hospitalDist} km</div>
+              </div>
+              <div className="border border-black p-3">
+                <div className="text-[9px] font-mono uppercase opacity-50">Rating</div>
+                <div className="font-bold">{selectedAccommodation.rating}/5.0</div>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="border-t border-black mt-12 p-8 bg-white">
